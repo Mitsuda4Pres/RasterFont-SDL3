@@ -1,0 +1,5 @@
+sdl2.sh
+*.swp
+build/*
+!build/pgshell.html
+.vscode
