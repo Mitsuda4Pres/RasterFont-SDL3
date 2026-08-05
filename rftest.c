@@ -123,6 +123,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 		case SDL_EVENT_KEY_DOWN: {
 			switch(event->key.key){
 				case SDLK_ESCAPE:{
+					event->type = SDL_EVENT_QUIT;
 					break;
 				}
 				case SDLK_F1:{
@@ -164,6 +165,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event){
 			break;
 		}
 	}
+
+	if(event->type == SDL_EVENT_QUIT){
+		return SDL_APP_SUCCESS;
+	}
 	return SDL_APP_CONTINUE;
 }
 
@@ -181,8 +186,8 @@ int draw(AppState *app_state){
 	SDL_RenderClear(app_state->renderer);
 	SDL_SetRenderDrawColor(app_state->renderer, 255,255,255,255);
 	//FC_DrawAlign(app_state->chrono_font, app_state->renderer, (SCREEN_WIDTH/2), 8, FC_ALIGN_CENTER, "%d Bubbles!", app_state->obj.bubble_count);
-	RF_printString(app_state->renderer, 10, 10, 12, "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG", &app_state->font, 0);
-	RF_printString(app_state->renderer, 20,100, 48, "THE QUICK BROWN FOX", &app_state->font, 0);
+	RF_printString(app_state->renderer, 10, 10, 12, "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG", &app_state->font, OUTLINE);
+	RF_printString(app_state->renderer, 20,100, 48, "THE QUICK BROWN FOX", &app_state->font, OUTLINE);
 	RF_printString(app_state->renderer, 40,250, 96, "JUMPS OVER", &app_state->font, 0);
 	RF_printString(app_state->renderer, 600,50, 16, "THE LAZY DOG", &app_state->font, 0);
 	//debug text display
