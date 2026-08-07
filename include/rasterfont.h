@@ -420,27 +420,11 @@ int RF_buildFilledCharacterArray(struct RF_Font *font){
 		filled.name = font->characters[i].name;
 		filled.offset = font->characters[i].offset;
 		filled.type = font->characters[i].type;
-		filled.segments = calloc(c.total_segments * rows, sizeof(struct RF_Line) * 4);
+		filled.segments = calloc(c.total_segments * rows, sizeof(struct RF_Line));
 		font->filled_chars[i] = filled;
 
-        //Point array to hold all the edge points in the character. Two segments on a line results in 4 SDL_FPoints. To be safe, I'll do 8. Free at end of character loop.
-        /*
-        SDL_FPoint **edges = calloc(rows, sizeof(SDL_FPPoint *));
-        if(edges == NULL){
-            font->error_msg = "Could not allocate filled character edge point array.\n";
-            return NULL;
-        }
-        for(int j=0; j<rows; j++){
-            edges[j] = calloc(8, sizeof(SDL_FPoint);
-            if(edges[j] == NULL){
-                font->error_msg = "Could not allocate row of filled character edge point array.\n"
-                return NULL;
-            }
-        }
-        int *segments_in_row = calloc(rows, sizeof(int)); //segments_in_row[16], to carry the index counts and reiterate
-        */
         int seg_index = 0;
-
+		int toggle = 1;
         for(int j=0; j<rows; j++){      //scanline loop
 			SDL_FPoint *edges = calloc(2 * c.total_segments, sizeof(SDL_FPoint));
 			if(edges == NULL){
@@ -462,13 +446,12 @@ int RF_buildFilledCharacterArray(struct RF_Font *font){
                     index++;
                 }
             }
-            int toggle = 1;
             if(index > 1){      //I think there is an edge case where only one point is given, in which case, don't bother drawing, it will should get filled by the outline.
-                for(int k=1; k<index; k++){
+                for(int k=0; k<index-1; k++){
                     if(toggle == 1){
                         struct RF_Line l;
-                        l.a = edges[k-1];
-                        l.b = edges[k];
+                        l.a = edges[k];
+                        l.b = edges[k+1];
                         font->filled_chars[i].segments[seg_index] = l;
                         seg_index++;
                         toggle = 0;
@@ -479,15 +462,6 @@ int RF_buildFilledCharacterArray(struct RF_Font *font){
  			free(edges);
         }
         font->filled_chars[i].total_segments = seg_index;
-        //I should now have edges[] filled with all scanline intersection points. Index should tell me how many there are.
-        //Heck, can I be putting then straight into font->filled_chars[i] from the above loop?
-        /*
-        for(int j=0; j<rows; j++){
-            free(edges[j]);
-        }
-        free(edges);
-        */
-        
     }
     return 0;
 }
@@ -498,11 +472,24 @@ SDL_FPoint RF_findIntersectionWithScanline(struct RF_Line scan, struct RF_Line t
     //Three possible returns: SDL_Point of intercept, no intercept, colinear.
     //y = mx + b ---> b = y - mx
     float ms = 0; //slope of scanline
-    float mt = (target.a.y - target.b.y) / (target.a.x - target.b.x);
     float bs = scan.a.y;    //y-intercept of horizontal line is any of its y-values
-    float bt = target.a.y - (mt * target.a.x);  //plug in values of a point on line to find y-intercept
+    float mt;
+    float bt;
     float x_ret;
     SDL_FPoint result;
+	if(target.a.x - target.b.x != 0){
+		mt = (target.a.y - target.b.y) / (target.a.x - target.b.x); //if not vertical, grab slope
+		bt = target.a.y - (mt * target.a.x);	//plug in values of a point on line to find y-intercept
+	}
+	else if((target.a.y < scan.a.y && target.b.y > scan.a.y) || (target.a.y > scan.a.y && target.b.y < scan.a.y)){   //Find out if the vertical segment crosses the scanline
+		result.x = target.a.x;										//if vertical, intersection is at target.x, scan.y
+		result.y = scan.a.y;
+		return result;
+	} else {
+		result.x = -2;
+		result.y = -2;
+		return result;
+	}
     if(ms == mt && bs == bt){
         result.x = -1;
         result.y = -1;
