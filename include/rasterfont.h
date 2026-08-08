@@ -156,10 +156,16 @@ int RF_printString(SDL_Renderer *renderer, float x, float y, int size, char *str
 			//transform x/y by scale and position in the string
 			float tx = x + pos;
 			float ty = y;		//transform by scalar, additionally transform by any up/down shifts (lowercase j etc.)
-			if(args & OUTLINE)
+			if(args & OUTLINE){
 				c = &font->characters[index];
-			else
+				RF_drawCharacter(renderer, c, scalar, tx, ty);
+			}
+			else {
 				c = &font->filled_chars[index];
+				RF_drawCharacter(renderer, c, scalar, tx, ty);
+				c = &font->characters[index];
+				RF_drawCharacter(renderer, c, scalar, tx, ty);	
+			}
 			RF_drawCharacter(renderer, c, scalar, tx, ty);
 			pos += width * scalar;			//When I get to varied width fonts, this should still work
 		}
@@ -398,6 +404,16 @@ struct RF_Font RF_loadFontFromFile(char *filename){
 	return font; //This is now a pretty big struct. I should get the pointer version working.
 }
 
+int RF_sortFPointXAscending(const void *a, const void *b){
+	SDL_FPoint arg1 = *(const SDL_FPoint *)a;
+	SDL_FPoint arg2 = *(const SDL_FPoint *)b;
+
+	if(arg1.x < arg2.x) return -1;
+	if(arg1.x > arg2.x) return 1;
+	return 0;
+}
+
+
 int RF_buildFilledCharacterArray(struct RF_Font *font){
     //I will need to malloc font.filled_chars some how. Do I need to do a whole first pass just to find out how many segments, then a second
     //to fill them in?
@@ -424,7 +440,7 @@ int RF_buildFilledCharacterArray(struct RF_Font *font){
 		font->filled_chars[i] = filled;
 
         int seg_index = 0;
-		int toggle = 1;
+		
         for(int j=0; j<rows; j++){      //scanline loop
 			SDL_FPoint *edges = calloc(2 * c.total_segments, sizeof(SDL_FPoint));
 			if(edges == NULL){
@@ -446,7 +462,21 @@ int RF_buildFilledCharacterArray(struct RF_Font *font){
                     index++;
                 }
             }
+
+			//Before storing line segments, we need to do some sorting and culling. This is the heart of whether this is a viable method. The letter D at
+			//scanline 1 returns 5 intersections, out of order: (11,1)(1,1)(11,1)(0,1)(12,1). In this case, if I draw them backwards, it works. But that 
+			//likely won't work in all cases. However, since the segments[] array is written in backwards order from the rff file, and thus reverse of
+			//how i've been thinking about the draw order, maybe I start by traversing edges backward. That doesn't work, lmao. I think we need to sort first.
+			//Following line (first gap in D) returns: (1,2)(12,2)(0,2)(13,2). What I want is: (0,2)(1,2)(12,2)(13,2) or reverse. Here sorting by x works. 
+			//In the previous line, sorting by X yields (0,1)(1,1)(11,1)(11,1)(12,1). If I cull repeats I get, (0,1)(1,1)(11,1)(12,1) which is not what I want. 
+			//The issue is that I have a horizontal as well as three verticals. What if I return nothing for horzontals, trusting that they will be filled by the partnering
+			//end vertices, then sort by x?
+
+
+
             if(index > 1){      //I think there is an edge case where only one point is given, in which case, don't bother drawing, it will should get filled by the outline.
+				qsort(edges, index, sizeof(SDL_FPoint), RF_sortFPointXAscending);
+				int toggle = 1;
                 for(int k=0; k<index-1; k++){
                     if(toggle == 1){
                         struct RF_Line l;
@@ -481,18 +511,18 @@ SDL_FPoint RF_findIntersectionWithScanline(struct RF_Line scan, struct RF_Line t
 		mt = (target.a.y - target.b.y) / (target.a.x - target.b.x); //if not vertical, grab slope
 		bt = target.a.y - (mt * target.a.x);	//plug in values of a point on line to find y-intercept
 	}
-	else if((target.a.y < scan.a.y && target.b.y > scan.a.y) || (target.a.y > scan.a.y && target.b.y < scan.a.y)){   //Find out if the vertical segment crosses the scanline
+	else if((target.a.y <= scan.a.y && target.b.y >= scan.a.y) || (target.a.y >= scan.a.y && target.b.y <= scan.a.y)){   //Find out if the vertical segment crosses the scanline
 		result.x = target.a.x;										//if vertical, intersection is at target.x, scan.y
 		result.y = scan.a.y;
 		return result;
 	} else {
 		result.x = -2;
 		result.y = -2;
-		return result;
+		return result; //outside segment endpoints
 	}
     if(ms == mt && bs == bt){
-        result.x = -1;
-        result.y = -1;
+        result.x = -2;
+        result.y = -2;
         return result; //colinear
     }
     if(ms == mt && bs != bt){
@@ -502,6 +532,13 @@ SDL_FPoint RF_findIntersectionWithScanline(struct RF_Line scan, struct RF_Line t
     }
     //ms * (x) + bs = mt * (x) + bt --> ms(x) - mt(x) = bt - bs --> (bt - bs) / (ms - mt)
     x_ret = (bt - bs) / (ms - mt);
+	//Fix rounding errors (i.e. in 'W', 10.99999 gets caught outside 11-14 range and point is dropped)
+	float rem = (float)(x_ret - (int)x_ret);
+	if(rem > 0.9f)
+		x_ret = (int)x_ret + 1;
+	else if(rem > 0 && rem < 0.1f)
+		x_ret = (int)x_ret;
+
     //is x_ret within the bounds of the target line segment?
     int small_tx = target.a.x;
     int big_tx = target.b.x;
